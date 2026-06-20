@@ -1,119 +1,119 @@
-# Перекладацький верстат — багатокористувацька версія (v2)
+# Translation Workbench — multi-user edition (v2)
 
-Веб-сервіс перекладу текстів через **DeepSeek V4** або **Anthropic Claude**
-(Anthropic-сумісний API) з акаунтами, бібліотекою документів, журналом
-«хто додав / хто редагував», дашбордом і потарифною оплатою.
+A web service for translating texts via **DeepSeek V4** or **Anthropic Claude**
+(Anthropic-compatible API), with user accounts, a document library, a
+"who added / who edited" activity log, a dashboard, and per-page billing.
 
-## Можливості
+## Features
 
-- Реєстрація / вхід (email + пароль, JWT у httpOnly-cookie, паролі bcrypt)
-- Бібліотека документів зі збереженням оригіналу й перекладу
-- Переклад із живим прогрес-баром (чанкінг по абзацах)
-- Редагування перекладу в інтерфейсі + збереження з фіксацією автора правок
-- Завантаження `.txt`/`.md`, вивантаження результату, повторне підвантаження
-- Журнал активності: хто додав, хто переклав, хто відредагував (+скільки знаків)
-- Дашборд: сторінки, сума до оплати, особиста статистика
-- Тарифікація: **30 грн / 1800 знаків із пробілами** (налаштовується)
+- Registration / login (email + password, JWT in an httpOnly cookie, bcrypt-hashed passwords)
+- Document library that stores both the original and the translation
+- Translation with a live progress bar (paragraph-based chunking)
+- In-app translation editing + saving with author attribution of each edit
+- Upload `.txt`/`.md`, download the result, re-upload an edited version
+- Activity log: who added, who translated, who edited (+ how many characters)
+- Dashboard: pages, amount due, personal statistics
+- Billing: **30 UAH / 1800 characters with spaces** (configurable)
 
-## Запуск
+## Running
 
-Node.js 18+ (нативних залежностей немає — встановиться будь-де).
+Node.js 18+ (no native dependencies — installs anywhere).
 
 ```bash
 npm install
-cp .env.example .env       # заповнити ключ і SESSION_SECRET
+cp .env.example .env       # fill in the API key and SESSION_SECRET
 npm start                  # http://localhost:3000
 ```
 
-Перший екран — /login (реєстрація/вхід). Після входу — Верстат і Дашборд.
+The first screen is /login (registration/login). After signing in — the Workbench and Dashboard.
 
-## Налаштування (.env)
+## Configuration (.env)
 
-Провайдер — один із блоків (DeepSeek або Anthropic).
-Обовʼязково зміни `SESSION_SECRET` на довгий випадковий рядок:
+Provider — one of the two blocks (DeepSeek or Anthropic).
+Be sure to change `SESSION_SECRET` to a long random string:
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-Тарифікація:
-| Змінна      | Опис                                   | Деф.     |
-|-------------|----------------------------------------|----------|
-| `RATE_UAH`  | ціна за сторінку                       | `30`     |
-| `PAGE_CHARS`| знаків (із пробілами) у сторінці       | `1800`   |
-| `BILL_ON`   | рахувати за `source` чи `target`       | `source` |
+Billing:
+| Variable     | Description                              | Default  |
+|--------------|------------------------------------------|----------|
+| `RATE_UAH`   | price per page                           | `30`     |
+| `PAGE_CHARS` | characters (with spaces) per page        | `1800`   |
+| `BILL_ON`    | bill by `source` or `target`             | `source` |
 
-«Знаки з пробілами» рахуються без переносів рядків (як «символи з пробілами» у Word).
+"Characters with spaces" are counted excluding line breaks (like "characters with spaces" in Word).
 
-## Структура
+## Structure
 
 ```
-server.js      — Express: роути auth, документів, перекладу, дашборда
-auth.js        — реєстрація/вхід, JWT-cookie, middleware захисту
-db.js          — сховище (JSON-файл у ./data/db.json) + тарифікація
-translate.js   — чанкінг + виклик провайдера + стрімінг прогресу
+server.js      — Express: auth, documents, translation, dashboard routes
+auth.js        — registration/login, JWT cookie, protection middleware
+db.js          — storage (JSON file at ./data/db.json) + billing
+translate.js   — chunking + provider call + progress streaming
 public/
-  login.html       — вхід/реєстрація
-  index.html       — верстат
-  dashboard.html   — дашборд
-  assets/app.css   — спільні стилі
-data/db.json   — база (створюється автоматично; не комітити)
+  login.html       — login/registration
+  index.html       — workbench
+  dashboard.html   — dashboard
+  assets/app.css   — shared styles
+data/db.json   — database (created automatically; do not commit)
 ```
 
-## Дані та бекап
+## Data and backup
 
-Уся база — один файл `data/db.json`. Для бекапу досить його скопіювати.
-Запис атомарний (через tmp + rename). Підходить для команди з кількох людей;
-для високого навантаження варто мігрувати на SQLite/Postgres (логіка ізольована в db.js).
+The entire database is a single file, `data/db.json`. To back it up, just copy it.
+Writes are atomic (via tmp + rename). Suitable for a small team; for high load,
+consider migrating to SQLite/Postgres (the logic is isolated in db.js).
 
-## Що далі (не входить у MVP)
+## What's next (not part of the MVP)
 
-- **Реальна оплата.** Зараз сума лише рахується й показується. Живий прийом
-  платежів (LiqPay / WayForPay / Fondy) — окремий крок, потребує твоїх
-  мерчант-реквізитів і вебхуків підтвердження.
-- Ролі (адмін/перекладач/замовник) і приватність документів між юзерами.
-- Підтримка `.docx` (через `mammoth`).
-- Експорт рахунку/інвойсу.
-- підключення інших мов
+- **Real payments.** Right now the amount is only calculated and displayed. Live
+  payment acceptance (LiqPay / WayForPay / Fondy) is a separate step that needs
+  your merchant credentials and confirmation webhooks.
+- Roles (admin / translator / client) and per-user document privacy.
+- `.docx` support (via `mammoth`).
+- Invoice export.
+- additional language support
 
 ---
 
-## Запуск у Docker (рекомендовано для VPS)
+## Running in Docker (recommended for a VPS)
 
-Два сервіси через docker-compose:
-- **app** — Node-додаток (порт 3000)
-- **tokenizer** — Python-сервіс офіційного токенайзера DeepSeek (внутрішній, порт 8000)
+Two services via docker-compose:
+- **app** — the Node application (port 3000)
+- **tokenizer** — a Python service running DeepSeek's official tokenizer (internal, port 8000)
 
 ```bash
-cp .env.example .env        # заповнити ключ, SESSION_SECRET, тариф
+cp .env.example .env        # fill in the API key, SESSION_SECRET, billing
 docker compose up -d --build
 ```
 
-Відкрий http://localhost:3000 (або проксіюй через nginx на VPS).
-База (`data/db.json`) монтується томом і переживає перезапуски/перебудови.
-`TOKENIZER_URL` усередині compose виставляється автоматично — нічого не треба.
+Open http://localhost:3000 (or proxy it through nginx on the VPS).
+The database (`data/db.json`) is mounted as a volume and survives restarts/rebuilds.
+`TOKENIZER_URL` is set automatically inside compose — nothing to do.
 
-Лог: `docker compose logs -f app` · Зупинка: `docker compose down`.
+Logs: `docker compose logs -f app` · Stop: `docker compose down`.
 
-Без Docker усе теж працює (`npm start`), просто токенайзер вимкнений,
-поки `TOKENIZER_URL` порожній.
+Without Docker it also works (`npm start`); the tokenizer is simply disabled
+while `TOKENIZER_URL` is empty.
 
-## Баланс DeepSeek
+## DeepSeek balance
 
-Дашборд показує картку «Баланс DeepSeek» — додаток проксіює
-`GET https://api.deepseek.com/user/balance` (Bearer-авторизація, ключ лишається
-на сервері). Якщо провайдер — Anthropic, картка показує «через Anthropic».
-Поповнення DeepSeek приймає через PayPal / картку / Alipay / WeChat —
-для України PayPal зазвичай найпростіший шлях.
+The dashboard shows a "DeepSeek balance" card — the app proxies
+`GET https://api.deepseek.com/user/balance` (Bearer auth; the key stays on the
+server). If the provider is Anthropic, the card shows "via Anthropic".
+DeepSeek accepts top-ups via PayPal / card / Alipay / WeChat — for Ukraine,
+PayPal is usually the simplest route.
 
-## Токенайзер і вартість API
+## Tokenizer and API cost
 
-Сервіс `tokenizer` завантажує офіційний `tokenizer.json` (через легку
-бібліотеку `tokenizers` — ids ідентичні офіційному transformers) і дає точну
-кількість токенів. У Верстаті біля вартості в гривнях показується
-«N токенів · ~$X API» — це орієнтовна собівартість запиту в DeepSeek
-(на основі `DEEPSEEK_PRICE_IN/OUT`), щоб бачити маржу між тарифом клієнту
-і витратами на API.
+The `tokenizer` service loads the official `tokenizer.json` (via the lightweight
+`tokenizers` library — ids identical to the official transformers) and provides an
+exact token count. In the Workbench, next to the price in UAH, it shows
+"N tokens · ~$X API" — an approximate cost of the request in DeepSeek
+(based on `DEEPSEEK_PRICE_IN/OUT`), so you can see the margin between the client
+tariff and the API cost.
 
-Якщо хочеш офіційний шлях через transformers (як у `deepseek_tokenizer.py`) —
-заміни залежність у `tokenizer/requirements.txt` і `tokenizer/app.py`
-на `transformers.AutoTokenizer.from_pretrained('.', trust_remote_code=True)`.
+If you want the official path via transformers (as in `deepseek_tokenizer.py`),
+replace the dependency in `tokenizer/requirements.txt` and `tokenizer/app.py`
+with `transformers.AutoTokenizer.from_pretrained('.', trust_remote_code=True)`.
