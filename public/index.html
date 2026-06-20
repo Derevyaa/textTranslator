@@ -11,6 +11,8 @@
     padding: 12px 22px; background: var(--panel); border-bottom: 1px solid var(--hair);
   }
   .toolbar input.title { width: 220px; }
+  .toolbar select { font-family: var(--mono); font-size: 12px; padding: 6px 8px; border: 1px solid var(--hair-strong); border-radius: 6px; background: var(--elevated); color: var(--ink); cursor: pointer; }
+  .toolbar .lang { display: inline-flex; align-items: center; gap: 6px; }
   .glossary { padding: 0 22px; background: var(--panel); border-bottom: 1px solid var(--hair); }
   .glossary.collapsed { display: none; }
   .glossary label { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: none; color: var(--muted); padding: 12px 0 6px; }
@@ -64,10 +66,24 @@
   <div class="toolbar">
     <button id="load-source-btn">Завантажити файл</button>
     <input class="title" id="doc-title" type="text" placeholder="Назва документа" />
-    <span class="lang" style="font-family:var(--mono);font-size:12px;color:var(--faint)">
-      <input id="src-lang" style="width:96px" aria-label="Мова оригіналу" />
+    <span class="lang">
+      <select id="src-lang" aria-label="Мова оригіналу">
+        <option value="російської" selected>Русский</option>
+        <option value="української">Українська</option>
+        <option value="англійської">English</option>
+        <option value="німецької">Deutsch</option>
+        <option value="французької">Français</option>
+        <option value="іспанської">Español</option>
+      </select>
       &rarr;
-      <input id="tgt-lang" style="width:96px" aria-label="Мова перекладу" />
+      <select id="tgt-lang" aria-label="Мова перекладу">
+        <option value="українською" selected>Українська</option>
+        <option value="англійською">English</option>
+        <option value="німецькою">Deutsch</option>
+        <option value="французькою">Français</option>
+        <option value="іспанською">Español</option>
+        <option value="російською">Русский</option>
+      </select>
     </span>
     <button id="translate-btn" class="primary" disabled>Перекласти</button>
     <div class="spacer"></div>
@@ -125,6 +141,9 @@ const el = {};
  'glossary-panel','glossary','progress-meta','progress-label','progress-pct','bar','bar-fill',
  'source-pane','source','source-count','target','target-count','save-btn','download-btn','reupload-btn',
  'cost','tokens','status','source-file','reupload-file'].forEach(id => el[id.replace(/-([a-z])/g,(_,c)=>c.toUpperCase())] = $(id));
+
+// maps the (instrumental) target-language label to a short code for the download filename
+const TO_CODE = { 'українською':'uk', 'англійською':'en', 'німецькою':'de', 'французькою':'fr', 'іспанською':'es', 'російською':'ru' };
 
 let docId = null;
 let sourceName = 'document.txt';
@@ -359,12 +378,14 @@ el.downloadBtn.onclick = () => {
   const text = el.target.value;
   if (!text.trim()) return;
   const base = (el.docTitle.value.trim() || sourceName).replace(/\.[^.]+$/, '');
+  const code = TO_CODE[el.tgtLang.value] || 'txt';
+  const fname = base + '.' + code + '.txt';
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = base + '.uk.txt';
+  a.href = url; a.download = fname;
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  setStatus('Файл збережено: ' + base + '.uk.txt', 'ok');
+  setStatus('Файл збережено: ' + fname, 'ok');
 };
 
 el.reuploadBtn.onclick = () => el.reuploadFile.click();
