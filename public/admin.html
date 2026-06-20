@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Адмін · Переклад</title>
+<link rel="stylesheet" href="/assets/app.css" />
+<style>
+  .wrap { padding: 22px; max-width: 1120px; width: 100%; margin: 0 auto; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .card { background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; padding: 15px 17px; }
+  .card .k { font-family: var(--mono); font-size: 11px; letter-spacing: .07em; text-transform: none; color: var(--muted); }
+  .card .v { font-size: 24px; font-weight: 650; letter-spacing: -.02em; margin-top: 5px; }
+  .card .v small { font-size: 13px; font-weight: 500; color: var(--faint); }
+  .card.accent .v { color: var(--accent); }
+  .card.alert .v { color: var(--warn); }
+
+  .section-title { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: none; color: var(--muted); font-weight: 600; margin: 26px 0 10px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 13px; font-size: 13px; border-bottom: 1px solid var(--hair); vertical-align: middle; }
+  th { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: none; color: var(--muted); font-weight: 600; background: var(--rail); }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-family: var(--mono); text-align: right; color: var(--muted); }
+  td.cost { font-family: var(--mono); text-align: right; font-weight: 600; }
+  td a { color: var(--accent); text-decoration: none; font-weight: 550; }
+  td a:hover { text-decoration: underline; }
+  .empty { color: var(--faint); padding: 16px 13px; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  button.sm { padding: 5px 10px; font-size: 12px; border-radius: 6px; }
+  button.approve { color: #fff; background: var(--done); border-color: var(--done); }
+  button.approve:hover { filter: brightness(.95); background: var(--done); }
+  button.danger { color: var(--warn); border-color: rgba(235,87,87,.35); }
+  button.danger:hover { background: rgba(235,87,87,.12); border-color: var(--warn); }
+  .role { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--nav-active); color: var(--ink); border: 1px solid var(--frame); padding: 9px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="eyebrow">Перекладацький верстат</div>
+      <h1>Адмін-консоль</h1>
+    </div>
+    <nav class="nav">
+      <a href="/">Верстат</a>
+      <a href="/dashboard">Дашборд</a>
+      <a href="/admin" class="active">Адмін</a>
+    </nav>
+    <div class="user-chip">
+      <span class="who" id="who">—</span>
+      <button id="logout">Вийти</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="cards" id="cards"></div>
+
+    <div class="section-title">Заявки на підтвердження</div>
+    <div id="pending"></div>
+
+    <div class="section-title">Користувачі</div>
+    <div id="users"></div>
+
+    <div class="section-title">Усі документи</div>
+    <div id="docs"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n).toLocaleString('uk-UA');
+const money = (n) => Number(n).toFixed(2).replace('.', ',');
+const STATUS = { added: 'Додано', translating: 'Перекладається', translated: 'Перекладено', edited: 'Відредаговано' };
+const USTATUS = { pending: 'Очікує', approved: 'Схвалено', suspended: 'Призупинено' };
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+fetch('/api/me').then(r => r.ok ? r.json() : Promise.reject()).then(d => {
+  if (!d.user.isAdmin) { window.location.href = '/'; return; }
+  $('who').textContent = d.user.name;
+  loadAll();
+}).catch(() => window.location.href = '/login');
+
+$('logout').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; };
+
+async function loadAll() {
+  await Promise.all([loadOverview(), loadUsers(), loadDocs()]);
+}
+
+async function loadOverview() {
+  const d = await (await fetch('/api/admin/overview')).json();
+  let bal = '<small>—</small>';
+  if (d.balance && !d.balance.unsupported && !d.balance.error) {
+    const i = (d.balance.balance_infos && d.balance.balance_infos[0]) || {};
+    bal = (i.total_balance != null ? i.total_balance : '0') + ' <small>' + (i.currency || '') + '</small>';
+  } else if (d.balance && d.balance.unsupported) { bal = '<small>Anthropic</small>'; }
+  $('cards').innerHTML = [
+    card('Користувачів', fmt(d.users)),
+    card('Заявок', fmt(d.pending), '', d.pending > 0 ? 'alert' : ''),
+    card('Документів', fmt(d.documents)),
+    card('Сторінок', d.pages.toFixed(2)),
+    card('Виручка', money(d.revenue) + ' <small>грн</small>', '', 'accent'),
+    card('Баланс DeepSeek', bal),
+  ].join('');
+}
+
+async function loadUsers() {
+  const { users } = await (await fetch('/api/admin/users')).json();
+  const pending = users.filter(u => u.status === 'pending' && !u.isAdmin);
+
+  $('pending').innerHTML = !pending.length
+    ? '<div class="empty">Нових заявок немає.</div>'
+    : table(['Email', 'Імʼя', 'Коли', ''], pending.map(u => `
+        <tr>
+          <td>${esc(u.email)}</td><td>${esc(u.name)}</td>
+          <td class="num">${new Date(u.createdAt).toLocaleDateString('uk-UA')}</td>
+          <td><div class="actions">
+            <button class="sm approve" data-approve="${u.id}">Схвалити</button>
+            <button class="sm danger" data-del-user="${u.id}">Відхилити</button>
+          </div></td>
+        </tr>`).join(''));
+
+  $('users').innerHTML = table(
+    ['Email', 'Імʼя', 'Статус', 'Док.', 'Стор.', 'Грн', ''],
+    users.map(u => `
+      <tr>
+        <td>${esc(u.email)} ${u.isAdmin ? '<span class="role">admin</span>' : ''}</td>
+        <td>${esc(u.name)}</td>
+        <td><span class="badge ${u.status === 'approved' ? 'edited' : u.status === 'suspended' ? '' : 'translating'}">${USTATUS[u.status] || u.status}</span></td>
+        <td class="num">${fmt(u.docs)}</td>
+        <td class="num">${u.pages.toFixed(2)}</td>
+        <td class="cost">${money(u.cost)}</td>
+        <td><div class="actions">
+          ${u.isAdmin ? '' : (u.status === 'approved'
+            ? `<button class="sm" data-suspend="${u.id}">Призупинити</button>`
+            : `<button class="sm approve" data-approve="${u.id}">Схвалити</button>`)}
+          ${u.isAdmin ? '' : `<button class="sm danger" data-del-user="${u.id}">Видалити</button>`}
+        </div></td>
+      </tr>`).join(''));
+
+  bindUserActions();
+}
+
+async function loadDocs() {
+  const { documents } = await (await fetch('/api/admin/documents')).json();
+  $('docs').innerHTML = !documents.length
+    ? '<div class="empty">Документів ще немає.</div>'
+    : table(['Назва', 'Статус', 'Додав', 'Редагував', 'Ориг.', 'Пер.', 'Грн', ''],
+        documents.map(d => `
+          <tr>
+            <td><a href="/?doc=${d.id}">${esc(d.title)}</a></td>
+            <td><span class="badge ${d.status}">${STATUS[d.status] || d.status}</span></td>
+            <td>${esc(d.addedBy || '—')}</td>
+            <td>${esc(d.lastEditedBy || '—')}</td>
+            <td class="num">${fmt(d.sourceChars)}</td>
+            <td class="num">${fmt(d.targetChars)}</td>
+            <td class="cost">${money(d.cost)}</td>
+            <td><button class="sm danger" data-del-doc="${d.id}">Видалити</button></td>
+          </tr>`).join(''));
+  bindDocActions();
+}
+
+function bindUserActions() {
+  document.querySelectorAll('[data-approve]').forEach(b => b.onclick = () => act('POST', '/api/admin/users/' + b.dataset.approve + '/approve', 'Схвалено'));
+  document.querySelectorAll('[data-suspend]').forEach(b => b.onclick = () => act('POST', '/api/admin/users/' + b.dataset.suspend + '/suspend', 'Призупинено'));
+  document.querySelectorAll('[data-del-user]').forEach(b => b.onclick = () => {
+    if (confirm('Видалити користувача разом з його документами?')) act('DELETE', '/api/admin/users/' + b.dataset.delUser, 'Видалено');
+  });
+}
+function bindDocActions() {
+  document.querySelectorAll('[data-del-doc]').forEach(b => b.onclick = () => {
+    if (confirm('Видалити документ? Дію не можна скасувати.')) act('DELETE', '/api/documents/' + b.dataset.delDoc, 'Документ видалено');
+  });
+}
+
+async function act(method, url, okMsg) {
+  try {
+    const r = await fetch(url, { method });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast(d.error || 'Помилка'); return; }
+    toast(okMsg);
+    loadAll();
+  } catch { toast('Немає звʼязку з сервером'); }
+}
+
+function card(k, v, sub, cls) {
+  return `<div class="card ${cls || ''}"><div class="k">${k}</div><div class="v">${v}${sub ? ' ' + sub : ''}</div></div>`;
+}
+function table(headers, rows) {
+  return `<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+</script>
+</body>
+</html>

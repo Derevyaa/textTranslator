@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    image: file-translator-app
+    env_file: .env
+    environment:
+      - TOKENIZER_URL=http://tokenizer:8000
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data          # persist the JSON database across restarts
+    depends_on:
+      - tokenizer
+    restart: unless-stopped
+
+  tokenizer:
+    build: ./tokenizer
+    image: file-translator-tokenizer
+    expose:
+      - "8000"                     # internal only; not published to host
+    restart: unless-stopped

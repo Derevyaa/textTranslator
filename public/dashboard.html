@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Дашборд · Переклад</title>
+<link rel="stylesheet" href="/assets/app.css" />
+<style>
+  .wrap { padding: 22px; max-width: 1100px; width: 100%; margin: 0 auto; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 14px; margin-bottom: 22px; }
+  .card { background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; padding: 16px 18px; }
+  .card .k { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: none; color: var(--muted); }
+  .card .v { font-size: 26px; font-weight: 650; letter-spacing: -.02em; margin-top: 6px; }
+  .card .v small { font-size: 14px; font-weight: 500; color: var(--faint); }
+  .card.accent .v { color: var(--accent); }
+  .card.low .v { color: var(--warn); }
+  td button.del { padding: 4px 10px; font-size: 12px; border-radius: 6px; color: var(--warn); border: 1px solid rgba(235,87,87,.35); background: var(--panel); cursor: pointer; }
+  td button.del:hover { background: rgba(235,87,87,.12); border-color: var(--warn); }
+
+  .section-title { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: none; color: var(--muted); font-weight: 600; margin: 0 0 10px; }
+  .grid2 { display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; align-items: start; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 14px; font-size: 13px; border-bottom: 1px solid var(--hair); }
+  th { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: none; color: var(--muted); font-weight: 600; background: var(--rail); }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-family: var(--mono); text-align: right; color: var(--muted); }
+  td.cost { font-family: var(--mono); text-align: right; font-weight: 600; color: var(--ink); }
+  td a { color: var(--accent); text-decoration: none; font-weight: 550; }
+  td a:hover { text-decoration: underline; }
+  .who-cell { color: var(--muted); }
+  .empty { color: var(--faint); padding: 18px 14px; }
+
+  .feed { background: var(--panel); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
+  .feed .row { display: flex; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--hair); font-size: 13px; }
+  .feed .row:last-child { border-bottom: none; }
+  .feed .dot { width: 7px; height: 7px; border-radius: 99px; margin-top: 6px; flex: none; background: var(--faint); }
+  .feed .dot.added { background: var(--muted); }
+  .feed .dot.translated { background: var(--accent); }
+  .feed .dot.edited { background: var(--done); }
+  .feed .meta { color: var(--faint); font-family: var(--mono); font-size: 11px; margin-top: 2px; }
+
+  @media (max-width: 860px) { .cards { grid-template-columns: repeat(2,1fr); } .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="eyebrow">Перекладацький верстат</div>
+      <h1>Дашборд</h1>
+    </div>
+    <nav class="nav">
+      <a href="/">Верстат</a>
+      <a href="/dashboard" class="active">Дашборд</a>
+      <a href="/admin" id="admin-link" style="display:none">Адмін</a>
+    </nav>
+    <div class="user-chip">
+      <span class="who" id="who">—</span>
+      <button id="logout">Вийти</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="cards" id="cards"></div>
+
+    <div class="grid2">
+      <div>
+        <div class="section-title">Документи</div>
+        <div id="docs"></div>
+      </div>
+      <div>
+        <div class="section-title">Активність</div>
+        <div class="feed" id="feed"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n).toLocaleString('uk-UA');
+const money = (n) => Number(n).toFixed(2).replace('.', ',');
+const STATUS = { added: 'Додано', translating: 'Перекладається', translated: 'Перекладено', edited: 'Відредаговано' };
+const ACTION = { added: 'додав(-ла) документ', translated: 'переклав(-ла)', edited: 'відредагував(-ла)' };
+
+function timeAgo(iso) {
+  const d = (Date.now() - new Date(iso)) / 1000;
+  if (d < 60) return 'щойно';
+  if (d < 3600) return Math.floor(d / 60) + ' хв тому';
+  if (d < 86400) return Math.floor(d / 3600) + ' год тому';
+  return new Date(iso).toLocaleDateString('uk-UA');
+}
+
+let isAdmin = false;
+fetch('/api/me').then(r => r.ok ? r.json() : Promise.reject()).then(d => {
+  $('who').textContent = d.user.name;
+  isAdmin = !!d.user.isAdmin;
+  if (isAdmin) { const a = document.getElementById('admin-link'); if (a) a.style.display = ''; }
+  return fetch('/api/dashboard').then(r => r.json());
+}).then(render).catch(() => window.location.href = '/login');
+
+$('logout').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; };
+
+function render(d) {
+  const b = d.billing;
+  $('cards').innerHTML = [
+    card('Документів', fmt(d.totals.docs), ''),
+    card('Сторінок', d.totals.pages.toFixed(2), '<small>×' + b.pageChars + ' зн.</small>'),
+    card('До оплати', money(d.totals.cost) + ' <small>грн</small>', '', true),
+    card('Мої правки', fmt(d.mine.edited), '<small>' + fmt(d.mine.editedChars) + ' зн.</small>'),
+    '<div class="card" id="balance-card"><div class="k">Баланс DeepSeek</div><div class="v" id="balance-val">…</div></div>',
+  ].join('');
+  loadBalance();
+
+  // documents table
+  if (!d.documents.length) {
+    $('docs').innerHTML = '<div class="empty">Ще немає документів. Створи перший у <a href="/">Верстаті</a>.</div>';
+  } else {
+    const rows = d.documents.map(doc => `
+      <tr>
+        <td><a href="/?doc=${doc.id}">${esc(doc.title)}</a></td>
+        <td><span class="badge ${doc.status}">${STATUS[doc.status] || doc.status}</span></td>
+        <td class="who-cell">${esc(doc.addedBy || '—')}</td>
+        <td class="who-cell">${esc(doc.lastEditedBy || '—')}</td>
+        <td class="num">${fmt(doc.sourceChars)}</td>
+        <td class="num">${fmt(doc.targetChars)}</td>
+        <td class="num">${doc.pages.toFixed(2)}</td>
+        <td class="cost">${money(doc.cost)}</td>
+        ${isAdmin ? `<td><button class="del" data-del="${doc.id}">Видалити</button></td>` : ''}
+      </tr>`).join('');
+    $('docs').innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Назва</th><th>Статус</th><th>Додав</th><th>Редагував</th>
+          <th style="text-align:right">Ориг.</th><th style="text-align:right">Пер.</th>
+          <th style="text-align:right">Стор.</th><th style="text-align:right">Грн</th>
+          ${isAdmin ? '<th></th>' : ''}
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    if (isAdmin) {
+      document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (!confirm('Видалити документ? Дію не можна скасувати.')) return;
+        const r = await fetch('/api/documents/' + b.dataset.del, { method: 'DELETE' });
+        if (r.ok) { const res = await fetch('/api/dashboard').then(x => x.json()); render(res); }
+      });
+    }
+  }
+
+  // activity feed
+  if (!d.activity.length) {
+    $('feed').innerHTML = '<div class="empty">Поки тихо.</div>';
+  } else {
+    $('feed').innerHTML = d.activity.map(a => {
+      const extra = a.action === 'edited' && a.chars
+        ? ' (' + (a.chars > 0 ? '+' : '') + fmt(a.chars) + ' зн.)' : '';
+      return `<div class="row">
+        <span class="dot ${a.action}"></span>
+        <div>
+          <div><b>${esc(a.userName || '—')}</b> ${ACTION[a.action] || a.action} «${esc(a.docTitle)}»${extra}</div>
+          <div class="meta">${timeAgo(a.at)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function loadBalance() {
+  const setVal = (html, low) => {
+    const v = document.getElementById('balance-val');
+    if (!v) return;
+    v.innerHTML = html;
+    if (low) document.getElementById('balance-card').classList.add('low');
+  };
+  fetch('/api/balance').then(r => r.json()).then(b => {
+    if (b.unsupported) return setVal('<small>через Anthropic</small>');
+    if (b.error) return setVal('<small>н/д</small>');
+    const info = (b.balance_infos && b.balance_infos[0]) || {};
+    const total = info.total_balance != null ? info.total_balance : '0';
+    const cur = info.currency || '';
+    setVal(total + ' <small>' + cur + '</small>', b.is_available === false);
+  }).catch(() => setVal('<small>н/д</small>'));
+}
+
+function card(k, v, sub, accent) {
+  return `<div class="card ${accent ? 'accent' : ''}"><div class="k">${k}</div><div class="v">${v}${sub ? ' ' + sub : ''}</div></div>`;
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+</script>
+</body>
+</html>

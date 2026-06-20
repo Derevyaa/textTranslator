@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Верстат · Переклад</title>
+<link rel="stylesheet" href="/assets/app.css" />
+<style>
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 22px; background: var(--panel); border-bottom: 1px solid var(--hair);
+  }
+  .toolbar input.title { width: 220px; }
+  .glossary { padding: 0 22px; background: var(--panel); border-bottom: 1px solid var(--hair); }
+  .glossary.collapsed { display: none; }
+  .glossary label { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: none; color: var(--muted); padding: 12px 0 6px; }
+  .glossary textarea { width: 100%; min-height: 56px; resize: vertical; margin-bottom: 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; padding: 10px 12px; border: 1px solid var(--hair-strong); border-radius: 7px; background: var(--elevated); color: var(--ink); }
+
+  .progress-wrap { padding: 10px 22px; background: var(--panel); border-bottom: 1px solid var(--hair); }
+  .progress-meta { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 7px; }
+  .progress-meta .pct { color: var(--ink); font-weight: 600; font-size: 13px; }
+  .progress-meta.done .pct { color: var(--done); }
+  .bar { height: 8px; background: var(--hair); border-radius: 99px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0%; background: var(--accent); border-radius: 99px; transition: width .25s ease; }
+  .bar.done > i { background: var(--done); }
+
+  .workspace { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--hair); min-height: 0; }
+  .pane { display: flex; flex-direction: column; background: var(--panel); min-height: 0; }
+  .pane-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; border-bottom: 1px solid var(--hair); }
+  .pane-head .title { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: none; color: var(--muted); font-weight: 600; }
+  .pane-head .count { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  textarea.editor { flex: 1; width: 100%; border: none; resize: none; outline: none; padding: 18px 20px; font-family: var(--sans); font-size: 14.5px; line-height: 1.65; color: var(--ink); background: var(--panel); }
+  textarea.editor[readonly] { background: var(--elevated); color: var(--strong); }
+  .source-pane { position: relative; }
+  .dropzone { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; background: rgba(38,134,255,.08); border: 2px dashed var(--accent); color: var(--accent); font-weight: 600; pointer-events: none; }
+  .source-pane.dragging .dropzone { display: flex; }
+
+  footer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 22px; background: var(--panel); border-top: 1px solid var(--hair); }
+  .cost { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .cost b { color: var(--ink); }
+  input[type="file"] { display: none; }
+
+  @media (max-width: 820px) { .workspace { grid-template-columns: 1fr; } .pane { min-height: 260px; } .toolbar input.title { width: 150px; } }
+  @media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="eyebrow">Перекладацький верстат</div>
+      <h1>Верстат</h1>
+    </div>
+    <nav class="nav">
+      <a href="/" class="active">Верстат</a>
+      <a href="/dashboard">Дашборд</a>
+      <a href="/admin" id="admin-link" style="display:none">Адмін</a>
+    </nav>
+    <div class="user-chip">
+      <span class="who" id="who">—</span>
+      <button id="logout">Вийти</button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <button id="load-source-btn">Завантажити файл</button>
+    <input class="title" id="doc-title" type="text" placeholder="Назва документа" />
+    <span class="lang" style="font-family:var(--mono);font-size:12px;color:var(--faint)">
+      <input id="src-lang" style="width:96px" aria-label="Мова оригіналу" />
+      &rarr;
+      <input id="tgt-lang" style="width:96px" aria-label="Мова перекладу" />
+    </span>
+    <button id="translate-btn" class="primary" disabled>Перекласти</button>
+    <div class="spacer"></div>
+    <button id="glossary-toggle" class="link-toggle" aria-expanded="false">Глосарій</button>
+  </div>
+
+  <div class="glossary collapsed" id="glossary-panel">
+    <label for="glossary">Глосарій — «оригінал = переклад», по одному на рядок</label>
+    <textarea id="glossary" placeholder="FieldCompanion = FieldCompanion&#10;Securitas = Securitas"></textarea>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-meta" id="progress-meta">
+      <span id="progress-label">Готово до роботи</span>
+      <span class="pct" id="progress-pct">0%</span>
+    </div>
+    <div class="bar" id="bar"><i id="bar-fill"></i></div>
+  </div>
+
+  <div class="workspace">
+    <div class="pane source-pane" id="source-pane">
+      <div class="pane-head">
+        <span class="title">Оригінал</span>
+        <span class="count" id="source-count">0 знаків</span>
+      </div>
+      <textarea class="editor" id="source" readonly placeholder="Перетягни сюди .txt / .md або натисни «Завантажити файл»"></textarea>
+      <div class="dropzone">Відпусти файл для завантаження</div>
+    </div>
+    <div class="pane">
+      <div class="pane-head">
+        <span class="title">Переклад (можна редагувати)</span>
+        <span class="count" id="target-count">0 знаків</span>
+      </div>
+      <textarea class="editor" id="target" readonly placeholder="Тут зʼявиться переклад. Після завершення — редагуй і тисни «Зберегти»."></textarea>
+    </div>
+  </div>
+
+  <footer>
+    <button id="save-btn" disabled>Зберегти правки</button>
+    <button id="download-btn" disabled>Завантажити переклад</button>
+    <button id="reupload-btn">Підвантажити редаговану версію</button>
+    <div class="spacer"></div>
+    <div class="cost" id="tokens"></div>
+    <div class="cost" id="cost">Вартість: <b>0,00 грн</b></div>
+    <div class="status" id="status"></div>
+  </footer>
+
+  <input type="file" id="source-file" accept=".txt,.md,.markdown,.text,text/plain" />
+  <input type="file" id="reupload-file" accept=".txt,.md,.markdown,.text,text/plain" />
+
+<script>
+const $ = (id) => document.getElementById(id);
+const el = {};
+['who','logout','load-source-btn','doc-title','src-lang','tgt-lang','translate-btn','glossary-toggle',
+ 'glossary-panel','glossary','progress-meta','progress-label','progress-pct','bar','bar-fill',
+ 'source-pane','source','source-count','target','target-count','save-btn','download-btn','reupload-btn',
+ 'cost','tokens','status','source-file','reupload-file'].forEach(id => el[id.replace(/-([a-z])/g,(_,c)=>c.toUpperCase())] = $(id));
+
+let docId = null;
+let sourceName = 'document.txt';
+let translating = false;
+let saveTimer = null;
+let lastSavedText = null;
+const LS_KEY = 'translator:lastDoc';
+function rememberDoc(id) { try { if (id) localStorage.setItem(LS_KEY, id); } catch (_) {} }
+function forgetDoc() { try { localStorage.removeItem(LS_KEY); } catch (_) {} }
+let billing = { rate: 30, pageChars: 1800, billOn: 'source' };
+let appCfg = { tokenizer: false, deepseekPrice: { in: 0.14, out: 0.28 } };
+
+fetch('/api/me').then(r => r.ok ? r.json() : Promise.reject()).then(d => {
+  el.who.textContent = d.user.name;
+  if (d.user.isAdmin) { const a = document.getElementById('admin-link'); if (a) a.style.display = ''; }
+}).catch(() => { window.location.href = '/login'; });
+
+fetch('/api/config').then(r => r.json()).then(cfg => {
+  el.srcLang.value = cfg.sourceLang || 'російської';
+  el.tgtLang.value = cfg.targetLang || 'українською';
+  billing = cfg.billing || billing;
+  appCfg = cfg;
+  updateCost();
+});
+
+const params = new URLSearchParams(location.search);
+let startDoc = params.get('doc');
+if (!startDoc) { try { startDoc = localStorage.getItem(LS_KEY); } catch (_) {} }
+if (startDoc) loadDocument(startDoc);
+
+const setStatus = (m, k) => { el.status.textContent = m || ''; el.status.className = 'status' + (k ? ' ' + k : ''); };
+const countWithSpaces = (t) => t.replace(/\r/g,'').replace(/\n/g,'').length;
+const fmt = (n) => n.toLocaleString('uk-UA');
+function updateCounts() {
+  el.sourceCount.textContent = fmt(countWithSpaces(el.source.value)) + ' знаків';
+  el.targetCount.textContent = fmt(countWithSpaces(el.target.value)) + ' знаків';
+  updateCost();
+}
+function updateCost() {
+  const text = billing.billOn === 'target' ? el.target.value : el.source.value;
+  const chars = countWithSpaces(text);
+  const pages = chars / billing.pageChars;
+  const cost = Math.round((pages * billing.rate) * 100) / 100;
+  el.cost.innerHTML = 'Вартість (' + (billing.billOn === 'target' ? 'переклад' : 'оригінал') + '): ' +
+    '<b>' + cost.toFixed(2).replace('.', ',') + ' грн</b> · ' + pages.toFixed(2) + ' стор';
+}
+
+let tokenSeq = 0;
+async function updateTokens() {
+  if (!appCfg.tokenizer) { el.tokens.textContent = ''; return; }
+  const text = el.source.value;
+  if (!text.trim()) { el.tokens.textContent = ''; return; }
+  const seq = ++tokenSeq;
+  el.tokens.textContent = '· токени…';
+  try {
+    const r = await fetch('/api/tokens', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const { tokens } = await r.json();
+    if (seq !== tokenSeq) return; // a newer request superseded this one
+    if (tokens == null) { el.tokens.textContent = ''; return; }
+    const p = appCfg.deepseekPrice || { in: 0.14, out: 0.28 };
+    const estUsd = (tokens / 1e6) * (p.in + p.out); // rough: output ≈ input
+    el.tokens.innerHTML = '· <b>' + tokens.toLocaleString('uk-UA') + '</b> токенів · ~$' + estUsd.toFixed(3) + ' API';
+  } catch { el.tokens.textContent = ''; }
+}
+function setProgress(percent, label, done) {
+  el.barFill.style.width = Math.max(0, Math.min(100, percent)) + '%';
+  el.progressPct.textContent = Math.round(percent) + '%';
+  if (label) el.progressLabel.textContent = label;
+  el.bar.classList.toggle('done', !!done);
+  el.progressMeta.classList.toggle('done', !!done);
+}
+function setTranslating(on) {
+  translating = on;
+  el.translateBtn.disabled = on || !el.source.value.trim();
+  el.loadSourceBtn.disabled = on;
+  el.reuploadBtn.disabled = on;
+  el.target.readOnly = on;
+  el.translateBtn.textContent = on ? 'Перекладаю…' : 'Перекласти';
+}
+
+const readText = (file) => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(fr.result);
+  fr.onerror = () => rej(new Error('Не вдалося прочитати файл.'));
+  fr.readAsText(file, 'utf-8');
+});
+async function loadSource(file) {
+  if (!file) return;
+  try {
+    const text = await readText(file);
+    sourceName = file.name || 'document.txt';
+    if (!el.docTitle.value.trim()) el.docTitle.value = sourceName.replace(/\.[^.]+$/, '');
+    docId = null;
+    el.source.value = text;
+    el.target.value = '';
+    updateCounts();
+    el.translateBtn.disabled = false;
+    el.downloadBtn.disabled = true; el.saveBtn.disabled = true;
+    setProgress(0, 'Файл завантажено — ' + sourceName, false);
+    setStatus('');
+    updateTokens();
+  } catch (e) { setStatus(e.message, 'error'); }
+}
+el.loadSourceBtn.onclick = () => el.sourceFile.click();
+el.sourceFile.onchange = (e) => loadSource(e.target.files[0]);
+
+['dragenter','dragover'].forEach(ev => el.sourcePane.addEventListener(ev, (e) => { e.preventDefault(); el.sourcePane.classList.add('dragging'); }));
+['dragleave','drop'].forEach(ev => el.sourcePane.addEventListener(ev, (e) => {
+  e.preventDefault();
+  if (ev === 'dragleave' && el.sourcePane.contains(e.relatedTarget)) return;
+  el.sourcePane.classList.remove('dragging');
+}));
+el.sourcePane.addEventListener('drop', (e) => { if (!translating) { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) loadSource(f); } });
+
+el.glossaryToggle.onclick = () => {
+  const c = el.glossaryPanel.classList.toggle('collapsed');
+  el.glossaryToggle.setAttribute('aria-expanded', String(!c));
+};
+
+async function loadDocument(id) {
+  try {
+    const r = await fetch('/api/documents/' + id);
+    if (!r.ok) { forgetDoc(); docId = null; return; } // doc was deleted — start fresh, no error
+    const { document: d } = await r.json();
+    docId = d.id;
+    rememberDoc(d.id);
+    el.docTitle.value = d.title;
+    el.srcLang.value = d.sourceLang || el.srcLang.value;
+    el.tgtLang.value = d.targetLang || el.tgtLang.value;
+    el.source.value = d.sourceText || '';
+    el.target.value = d.translatedText || '';
+    el.target.readOnly = false;
+    lastSavedText = el.target.value;
+    updateCounts();
+    el.translateBtn.disabled = !el.source.value.trim();
+    el.downloadBtn.disabled = !el.target.value.trim();
+    el.saveBtn.disabled = !el.target.value.trim();
+    setProgress(d.translatedText ? 100 : 0, 'Завантажено: ' + d.title, !!d.translatedText);
+    updateTokens();
+  } catch (e) { setStatus(e.message, 'error'); }
+}
+
+async function ensureDocument() {
+  if (docId) return docId;
+  const r = await fetch('/api/documents', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: el.docTitle.value.trim() || sourceName,
+      sourceText: el.source.value,
+      sourceLang: el.srcLang.value.trim(),
+      targetLang: el.tgtLang.value.trim(),
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Не вдалося створити документ');
+  docId = data.document.id;
+  rememberDoc(docId);
+  return docId;
+}
+
+el.translateBtn.onclick = async () => {
+  if (!el.source.value.trim() || translating) return;
+  setTranslating(true);
+  el.target.value = ''; updateCounts();
+  setProgress(0, 'Готую запит…', false); setStatus('');
+  let acc = '';
+  try {
+    const id = await ensureDocument();
+    const resp = await fetch('/api/documents/' + id + '/translate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceLang: el.srcLang.value.trim(), targetLang: el.tgtLang.value.trim(), glossary: el.glossary.value }),
+    });
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '', total = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const ev = JSON.parse(line);
+        if (ev.type === 'start') { total = ev.total; setProgress(0, 'Чанк 0/' + total, false); }
+        else if (ev.type === 'progress') { acc += ev.translated; el.target.value = acc; updateCounts(); setProgress(ev.percent, 'Чанк ' + ev.done + '/' + ev.total, false); }
+        else if (ev.type === 'done') {
+          acc = ev.text; el.target.value = acc; updateCounts();
+          lastSavedText = acc; rememberDoc(id);
+          setProgress(100, 'Готово · ' + total + ' чанків', true);
+          el.downloadBtn.disabled = false; el.saveBtn.disabled = false;
+          setStatus('Переклад завершено й збережено в бібліотеку.', 'ok');
+        } else if (ev.type === 'error') { throw new Error(ev.message); }
+      }
+    }
+  } catch (e) {
+    setStatus(e.message || 'Помилка перекладу.', 'error');
+    setProgress(0, 'Зупинено через помилку', false);
+  } finally {
+    setTranslating(false);
+    el.downloadBtn.disabled = !el.target.value.trim();
+  }
+};
+
+async function saveDoc(silent) {
+  if (!docId) { if (!silent) setStatus('Спочатку перекладіть документ.', 'error'); return; }
+  try {
+    if (silent) setStatus('Збереження…');
+    const r = await fetch('/api/documents/' + docId, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ translatedText: el.target.value, title: el.docTitle.value.trim() }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Не вдалося зберегти');
+    lastSavedText = el.target.value;
+    setStatus(silent ? 'Збережено' : 'Правки збережено.', 'ok');
+  } catch (e) { setStatus(e.message, 'error'); }
+}
+el.saveBtn.onclick = () => saveDoc(false);
+
+function scheduleAutosave() {
+  if (!docId || translating) return;
+  if (el.target.value === lastSavedText) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => saveDoc(true), 1200);
+}
+
+el.downloadBtn.onclick = () => {
+  const text = el.target.value;
+  if (!text.trim()) return;
+  const base = (el.docTitle.value.trim() || sourceName).replace(/\.[^.]+$/, '');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = base + '.uk.txt';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  setStatus('Файл збережено: ' + base + '.uk.txt', 'ok');
+};
+
+el.reuploadBtn.onclick = () => el.reuploadFile.click();
+el.reuploadFile.onchange = async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const text = await readText(file);
+    el.target.value = text; el.target.readOnly = false;
+    updateCounts();
+    el.downloadBtn.disabled = !text.trim(); el.saveBtn.disabled = !docId;
+    setStatus('Підвантажено: ' + file.name + (docId ? ' — натисни «Зберегти правки»' : ''), 'ok');
+  } catch (err) { setStatus(err.message, 'error'); }
+  e.target.value = '';
+};
+
+el.target.addEventListener('input', () => { updateCounts(); scheduleAutosave(); });
+el.source.addEventListener('input', () => { updateCounts(); el.translateBtn.disabled = translating || !el.source.value.trim(); });
+el.logout.onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; };
+
+updateCounts();
+</script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Вхід · Перекладацький верстат</title>
+<link rel="stylesheet" href="/assets/app.css" />
+<style>
+  body { align-items: center; justify-content: center; }
+  .card {
+    width: 100%; max-width: 380px; background: var(--panel); border: 1px solid var(--hair);
+    border-radius: 14px; padding: 28px; 
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: none;
+    color: var(--accent); font-weight: 600;
+  }
+  h1 { margin: 4px 0 18px; font-size: 21px; letter-spacing: -.01em; }
+  .tabs { display: flex; gap: 4px; background: var(--app-bg); padding: 4px; border-radius: 9px; margin-bottom: 18px; }
+  .tabs button { flex: 1; border: none; background: none; color: var(--muted); padding: 8px; border-radius: 6px; }
+  .tabs button.active { background: var(--panel); color: var(--ink);  }
+  .field { margin-bottom: 13px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  form button[type="submit"] { width: 100%; margin-top: 4px; padding: 11px; }
+  .status { margin-top: 12px; text-align: center; }
+  .name-field { display: none; }
+  .name-field.show { display: block; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="eyebrow">Перекладацький верстат</div>
+    <h1 id="heading">Вхід</h1>
+
+    <div class="tabs">
+      <button id="tab-login" class="active" type="button">Вхід</button>
+      <button id="tab-register" type="button">Реєстрація</button>
+    </div>
+
+    <div class="field name-field" id="name-field">
+      <label for="name">Імʼя</label>
+      <input id="name" type="text" autocomplete="name" placeholder="Як до тебе звертатися" />
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+    </div>
+    <div class="field">
+      <label for="password">Пароль</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="мінімум 6 символів" />
+    </div>
+    <button id="submit" class="primary" type="button">Увійти</button>
+    <div class="status" id="status"></div>
+  </div>
+
+<script>
+let mode = 'login';
+const $ = (id) => document.getElementById(id);
+const status = $('status');
+
+function setMode(m) {
+  mode = m;
+  $('tab-login').classList.toggle('active', m === 'login');
+  $('tab-register').classList.toggle('active', m === 'register');
+  $('name-field').classList.toggle('show', m === 'register');
+  $('heading').textContent = m === 'login' ? 'Вхід' : 'Реєстрація';
+  $('submit').textContent = m === 'login' ? 'Увійти' : 'Створити акаунт';
+  $('password').setAttribute('autocomplete', m === 'login' ? 'current-password' : 'new-password');
+  status.textContent = '';
+}
+$('tab-login').onclick = () => setMode('login');
+$('tab-register').onclick = () => setMode('register');
+
+async function submit() {
+  status.className = 'status';
+  status.textContent = 'Зачекай…';
+  const body = {
+    email: $('email').value.trim(),
+    password: $('password').value,
+    name: $('name').value.trim(),
+  };
+  const url = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) { status.className = 'status error'; status.textContent = data.error || 'Помилка'; return; }
+    const u = data.user || {};
+    window.location.href = (u.isAdmin || u.status === 'approved') ? '/' : '/pending';
+  } catch (e) {
+    status.className = 'status error';
+    status.textContent = 'Немає звʼязку з сервером.';
+  }
+}
+$('submit').onclick = submit;
+document.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+</script>
+</body>
+</html>
