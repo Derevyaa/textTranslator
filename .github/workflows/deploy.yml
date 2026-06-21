@@ -2,11 +2,11 @@ name: Deploy
 
 on:
   push:
-    branches: [main]         
-  workflow_dispatch:          
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: read              
+  contents: read
 
 concurrency:
   group: deploy-production
@@ -15,7 +15,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production    
+    environment: production
     steps:
       - name: Deploy to VPS over SSH
         uses: appleboy/ssh-action@v1.2.0
@@ -26,6 +26,7 @@ jobs:
           script: |
             set -e
             cd /opt/file-translator
-            git pull --ff-only origin main
+            git fetch origin main
+            git reset --hard origin/main      
             docker compose up -d --build
             docker image prune -f
