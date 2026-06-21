@@ -54,11 +54,16 @@ body {
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px; padding: 11px 16px; background: var(--rail); border-bottom: 1px solid var(--hair);
 }
+.brand { display: flex; align-items: center; gap: 11px; }
+.brand-mark { height: 32px; width: 32px; display: block; flex: none; border-radius: 8px; }
+.brand-text { display: flex; flex-direction: column; }
 .brand .eyebrow {
   font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
   text-transform: none; color: var(--accent-text); font-weight: 500;
 }
 .brand h1 { margin: 2px 0 0; font-size: 14px; font-weight: 500; letter-spacing: 0; color: var(--ink); }
+/* centered lockup on standalone cards (login, pending) */
+.auth-logo { display: block; margin: 0 auto 20px; height: 54px; width: auto; }
 .nav { display: flex; align-items: center; gap: 2px; }
 .nav a {
   font-size: 13px; font-weight: 400; color: var(--muted); text-decoration: none;

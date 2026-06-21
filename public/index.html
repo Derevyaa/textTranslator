@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Верстат · Переклад</title>
 <link rel="stylesheet" href="/assets/app.css" />
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
 <style>
   .toolbar {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -49,8 +50,11 @@
 <body>
   <header class="app-header">
     <div class="brand">
-      <div class="eyebrow">Перекладацький верстат</div>
-      <h1>Верстат</h1>
+      <img src="/assets/favicon.svg" alt="DERANT" class="brand-mark" />
+      <div class="brand-text">
+        <div class="eyebrow">Перекладацький верстат</div>
+        <h1>Верстат</h1>
+      </div>
     </div>
     <nav class="nav">
       <a href="/" class="active">Верстат</a>
@@ -65,6 +69,7 @@
 
   <div class="toolbar">
     <button id="load-source-btn">Завантажити файл</button>
+    <button id="paste-source-btn">Вставити з буфера</button>
     <input class="title" id="doc-title" type="text" placeholder="Назва документа" />
     <span class="lang">
       <select id="src-lang" aria-label="Мова оригіналу">
@@ -109,7 +114,7 @@
         <span class="title">Оригінал</span>
         <span class="count" id="source-count">0 знаків</span>
       </div>
-      <textarea class="editor" id="source" readonly placeholder="Перетягни сюди .txt / .md або натисни «Завантажити файл»"></textarea>
+      <textarea class="editor" id="source" placeholder="Встав або введи текст, перетягни сюди .txt / .md, або натисни «Завантажити файл»"></textarea>
       <div class="dropzone">Відпусти файл для завантаження</div>
     </div>
     <div class="pane">
@@ -137,7 +142,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const el = {};
-['who','logout','load-source-btn','doc-title','src-lang','tgt-lang','translate-btn','glossary-toggle',
+['who','logout','load-source-btn','paste-source-btn','doc-title','src-lang','tgt-lang','translate-btn','glossary-toggle',
  'glossary-panel','glossary','progress-meta','progress-label','progress-pct','bar','bar-fill',
  'source-pane','source','source-count','target','target-count','save-btn','download-btn','reupload-btn',
  'cost','tokens','status','source-file','reupload-file'].forEach(id => el[id.replace(/-([a-z])/g,(_,c)=>c.toUpperCase())] = $(id));
@@ -222,7 +227,9 @@ function setTranslating(on) {
   translating = on;
   el.translateBtn.disabled = on || !el.source.value.trim();
   el.loadSourceBtn.disabled = on;
+  el.pasteSourceBtn.disabled = on;
   el.reuploadBtn.disabled = on;
+  el.source.readOnly = on;
   el.target.readOnly = on;
   el.translateBtn.textContent = on ? 'Перекладаю…' : 'Перекласти';
 }
@@ -252,6 +259,35 @@ async function loadSource(file) {
 }
 el.loadSourceBtn.onclick = () => el.sourceFile.click();
 el.sourceFile.onchange = (e) => loadSource(e.target.files[0]);
+
+// start a fresh document from arbitrary text (clipboard paste or manual typing)
+function applyPastedText(text) {
+  if (!text || !text.trim()) { setStatus('Буфер порожній — нема що вставляти.', 'error'); return; }
+  sourceName = 'Вставлений текст.txt';
+  if (!el.docTitle.value.trim()) el.docTitle.value = 'Вставлений текст';
+  docId = null; forgetDoc();
+  el.source.value = text;
+  el.target.value = '';
+  el.target.readOnly = false;
+  lastSavedText = null;
+  updateCounts();
+  el.translateBtn.disabled = translating || !el.source.value.trim();
+  el.downloadBtn.disabled = true; el.saveBtn.disabled = true;
+  setProgress(0, 'Текст вставлено', false);
+  setStatus('Текст вставлено — можна перекладати.', 'ok');
+  updateTokens();
+}
+el.pasteSourceBtn.onclick = async () => {
+  if (translating) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    applyPastedText(text);
+  } catch (_) {
+    // clipboard API blocked/unsupported — fall back to manual Ctrl+V into the field
+    el.source.focus();
+    setStatus('Натисни Ctrl+V (⌘V) у полі «Оригінал», щоб вставити текст.', 'error');
+  }
+};
 
 ['dragenter','dragover'].forEach(ev => el.sourcePane.addEventListener(ev, (e) => { e.preventDefault(); el.sourcePane.classList.add('dragging'); }));
 ['dragleave','drop'].forEach(ev => el.sourcePane.addEventListener(ev, (e) => {
@@ -402,7 +438,15 @@ el.reuploadFile.onchange = async (e) => {
 };
 
 el.target.addEventListener('input', () => { updateCounts(); scheduleAutosave(); });
-el.source.addEventListener('input', () => { updateCounts(); el.translateBtn.disabled = translating || !el.source.value.trim(); });
+let tokenTimer = null;
+el.source.addEventListener('input', () => {
+  // manual paste/typing = new source → detach from any loaded doc so a fresh one is created
+  docId = null; forgetDoc();
+  el.downloadBtn.disabled = true; el.saveBtn.disabled = true;
+  updateCounts();
+  el.translateBtn.disabled = translating || !el.source.value.trim();
+  clearTimeout(tokenTimer); tokenTimer = setTimeout(updateTokens, 600);
+});
 el.logout.onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; };
 
 updateCounts();

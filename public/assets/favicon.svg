@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="131 1 220 220" role="img" aria-label="DERANT">
+  <defs>
+    <linearGradient id="derantBlue" x1="170" y1="60" x2="330" y2="245" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2BAFFF"/>
+      <stop offset="0.55" stop-color="#2686FF"/>
+      <stop offset="1" stop-color="#3D55F5"/>
+    </linearGradient>
+  </defs>
+  <rect x="131" y="1" width="220" height="220" rx="46" fill="#03070d"/>
+  <path fill="url(#derantBlue)" fill-rule="evenodd" d="
+M 179.0 87.0 L 152.0 87.0 L 150.0 89.0 L 150.0 201.0 L 151.0 195.0 L 157.0 177.0 L 165.0 160.0 L 171.0 151.0 L 181.0 140.0 L 181.0 89.0 Z
+M 153.0 18.0 L 150.0 21.0 L 150.0 48.0 L 152.0 50.0 L 247.0 50.0 L 261.0 53.0 L 268.0 56.0 L 280.0 64.0 L 290.0 75.0 L 294.0 81.0 L 300.0 96.0 L 302.0 109.0 L 302.0 116.0 L 299.0 131.0 L 293.0 144.0 L 289.0 150.0 L 277.0 162.0 L 265.0 169.0 L 251.0 173.0 L 191.0 173.0 L 171.0 193.0 L 155.0 204.0 L 165.0 205.0 L 254.0 204.0 L 265.0 202.0 L 279.0 197.0 L 290.0 191.0 L 302.0 182.0 L 314.0 169.0 L 323.0 155.0 L 330.0 137.0 L 333.0 121.0 L 333.0 103.0 L 329.0 83.0 L 324.0 70.0 L 317.0 58.0 L 309.0 48.0 L 297.0 37.0 L 283.0 28.0 L 265.0 21.0 L 247.0 18.0 Z
+  "/>
+</svg>

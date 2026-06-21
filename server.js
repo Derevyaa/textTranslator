@@ -77,14 +77,20 @@ function enrich(doc) {
   };
 }
 
+// ---- access control: a user sees only their own documents; an admin sees all ----
+const canSee = (doc, user) => !!doc && (auth.isAdmin(user) || doc.ownerId === user.id);
+const visibleDocs = (user) => auth.isAdmin(user)
+  ? db.listDocuments()
+  : db.listDocuments().filter((d) => d.ownerId === user.id);
+
 // ---- documents ----
-app.get('/api/documents', auth.approvedAuth, (_req, res) => {
-  res.json({ documents: db.listDocuments().map(enrich), billing: db.billingConfig() });
+app.get('/api/documents', auth.approvedAuth, (req, res) => {
+  res.json({ documents: visibleDocs(req.user).map(enrich), billing: db.billingConfig() });
 });
 
 app.get('/api/documents/:id', auth.approvedAuth, (req, res) => {
   const doc = db.getDocument(req.params.id);
-  if (!doc) return res.status(404).json({ error: 'Документ не знайдено.' });
+  if (!canSee(doc, req.user)) return res.status(404).json({ error: 'Документ не знайдено.' });
   res.json({ document: { ...enrich(doc), sourceText: doc.sourceText, translatedText: doc.translatedText } });
 });
 
@@ -101,7 +107,7 @@ app.post('/api/documents', auth.approvedAuth, (req, res) => {
 // save edited translation
 app.put('/api/documents/:id', auth.approvedAuth, (req, res) => {
   const doc = db.getDocument(req.params.id);
-  if (!doc) return res.status(404).json({ error: 'Документ не знайдено.' });
+  if (!canSee(doc, req.user)) return res.status(404).json({ error: 'Документ не знайдено.' });
   const { translatedText, title } = req.body || {};
   const before = doc.targetChars;
   const updated = db.updateDocument(doc.id, {
@@ -118,7 +124,7 @@ app.put('/api/documents/:id', auth.approvedAuth, (req, res) => {
 // translate (streams NDJSON, saves result + logs activity)
 app.post('/api/documents/:id/translate', auth.approvedAuth, async (req, res) => {
   const doc = db.getDocument(req.params.id);
-  if (!doc) return res.status(404).json({ error: 'Документ не знайдено.' });
+  if (!canSee(doc, req.user)) return res.status(404).json({ error: 'Документ не знайдено.' });
 
   res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache');
@@ -147,7 +153,8 @@ app.post('/api/documents/:id/translate', auth.approvedAuth, async (req, res) => 
 
 // ---- dashboard ----
 app.get('/api/dashboard', auth.approvedAuth, (req, res) => {
-  const docs = db.listDocuments().map(enrich);
+  const visible = visibleDocs(req.user);
+  const docs = visible.map(enrich);
   const { pageChars } = db.billingConfig();
   const totals = docs.reduce(
     (t, d) => { t.docs++; t.chars += d.billChars; t.cost += d.cost; return t; },
@@ -156,7 +163,12 @@ app.get('/api/dashboard', auth.approvedAuth, (req, res) => {
   totals.pages = Math.round((totals.chars / pageChars) * 100) / 100;
   totals.cost = Math.round(totals.cost * 100) / 100;
 
-  const activity = db.listActivity(40).map((a) => ({
+  const isAdm = auth.isAdmin(req.user);
+  const visibleIds = new Set(visible.map((d) => d.id));
+  const activityRaw = isAdm
+    ? db.listActivity(40)
+    : db.listActivity(1000).filter((a) => visibleIds.has(a.documentId)).slice(0, 40);
+  const activity = activityRaw.map((a) => ({
     action: a.action, chars: a.chars, at: a.at,
     userName: db.nameOf(a.userId),
     docTitle: (db.getDocument(a.documentId) || {}).title || '—',
